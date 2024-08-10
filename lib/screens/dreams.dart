@@ -17,30 +17,83 @@ class DreamsPage extends StatefulWidget {
 class _DreamsPageState extends State<DreamsPage> {
   final textController = TextEditingController();
 
-  String formatDate(DateTime dt){
+  String formatDate(DateTime dt) {
     final DateFormat dateTime = DateFormat('dd-MM-yyyy HH:mm');
     return dateTime.format(dt);
   }
 
   void createDream() {
     showDialog(
-      context: context, 
+      context: context,
       builder: (context) => AlertDialog(
         backgroundColor: Theme.of(context).colorScheme.surface,
         content: TextField(
           controller: textController,
+          decoration: const InputDecoration(labelText: "Enter your dream..."),
         ),
         actions: [
-          MaterialButton(
+          TextButton(
             onPressed: () {
-              print('Logging dream: ${textController.text}');
-              // Add text to db, clear textbox then pop box
-              context.read<DreamDatabase>().addDream(textController.text); 
               textController.clear();
               Navigator.pop(context);
-              
+            },
+            child: const Text("Cancel"),
+          ),
+          TextButton(
+            onPressed: () async {
+              await context.read<DreamDatabase>().addDream(textController.text);
+              textController.clear();
+              Navigator.pop(context);
             },
             child: const Text("Log Dream"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void updateDream(Dream dream) {
+    textController.text = dream.content;
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        title: const Text("Modify Dream"),
+        content: TextField(controller: textController),
+        actions: [
+          TextButton(
+            onPressed: () {
+              context
+                  .read<DreamDatabase>()
+                  .updateDream(dream.id, textController.text);
+              textController.clear();
+              Navigator.pop(context);
+            },
+            child: const Text("Update"),
+          )
+        ],
+      ),
+    );
+  }
+
+  void deleteDream(int id) {
+    context.read<DreamDatabase>().deleteDream(id);
+  }
+
+  void analyzeDream(Dream dream) async {
+    final dreamDatabase = context.read<DreamDatabase>();
+    final analysis = await dreamDatabase.sendDreamToBackend(dream.content);
+
+    // Display the analysis in a dialog or any other way you'd like
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Dream Analysis"),
+        content: Text(analysis),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Close"),
           ),
         ],
       ),
@@ -50,57 +103,22 @@ class _DreamsPageState extends State<DreamsPage> {
   @override
   void initState() {
     super.initState();
-    print('Initializing DreamsPage...');
     readDreams();
   }
 
-  // Read
   void readDreams() {
-    print('Getting dreams from database...');
     context.read<DreamDatabase>().getDreams();
-  }
-
-  void updateDream(Dream dream){
-    textController.text = dream.content; //fill textfield with dream content
-    showDialog(
-      context: context, 
-      builder: (context) => AlertDialog(
-        backgroundColor: Theme.of(context).colorScheme.surface,
-        title: const Text("Modify Dream"),
-        content: TextField(controller: textController),
-        actions: [
-          MaterialButton(
-            onPressed: () {
-              //update
-              context
-                .read<DreamDatabase>()
-                .updateDream(dream.id, textController.text);
-              textController.clear();
-              Navigator.pop(context);
-            },
-            child: const Text("Update"),
-          )
-        ],
-      )
-    );
-  }
-
-  void deleteDream(int id){
-    context.read<DreamDatabase>().deleteDream(id);
   }
 
   @override
   Widget build(BuildContext context) {
-    // Dream database 
     final dreamDatabase = context.watch<DreamDatabase>();
     List<Dream> currentDreams = dreamDatabase.currentDreams;
-    // print('Current dreams: ${currentDreams.length}');
 
     return Scaffold(
       appBar: AppBar(
         title: Text("Dreams", style: GoogleFonts.dmSerifText(fontSize: 36.0)),
-        // elevation: 10,
-        backgroundColor: Colors.transparent
+        backgroundColor: Colors.transparent,
       ),
       backgroundColor: Theme.of(context).colorScheme.surface,
       drawer: const MyDrawer(),
@@ -110,22 +128,35 @@ class _DreamsPageState extends State<DreamsPage> {
       ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: [ 
-          // Heading
-          // Padding(padding: const EdgeInsets.all(25.0),
-          //   child: 
-          //   // Text("Lucid Logs", 
-          //   // style: GoogleFonts.dmSerifText(fontSize: 48, color: Theme.of(context).colorScheme.inversePrimary)
-          //   ),
-          // ),
-          // LIST of dreams
+        children: [
           Expanded(
             child: ListView.builder(
               itemCount: currentDreams.length,
               itemBuilder: (context, index) {
-                final dream = currentDreams[index]; // Get 1 dream
-                // print('Displaying dream: ${dream.content}');
-                return DreamTile(text: dream.content, dateTime: formatDate(dream.createdAt), onEdit: () => updateDream(dream), onDelete: () => deleteDream(dream.id));
+                final dream = currentDreams[index];
+                return ListTile(
+                  title: Text(dream.content),
+                  subtitle: Text(formatDate(dream.createdAt)),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.edit),
+                        onPressed: () => updateDream(dream),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete),
+                        onPressed: () => deleteDream(dream.id),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons
+                            .cloud_upload), // Icon to trigger backend request
+                        onPressed: () => analyzeDream(
+                            dream), // Send dream to backend for analysis
+                      ),
+                    ],
+                  ),
+                );
               },
             ),
           ),
